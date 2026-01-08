@@ -1,3 +1,4 @@
+import { NOUNS } from '../utils/nounDictionary';
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import Tesseract from 'tesseract.js';
@@ -458,6 +459,21 @@ const ReadAloudPage = () => {
   const synth = window.speechSynthesis;
   const utteranceRef = useRef(null);
   const wordsRef = useRef([]);
+
+  const speakWord = (word) => {
+  if (!word || !selectedVoice) return;
+
+  // Stop any ongoing speech (including Read Aloud)
+  synth.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(word);
+  utterance.voice = selectedVoice;
+  utterance.rate = 0.9;   // slower for clear pronunciation
+  utterance.pitch = 1;
+
+  synth.speak(utterance);
+};
+
   
   // Initialize Tesseract worker for OCR
   useEffect(() => {
@@ -568,20 +584,30 @@ const ReadAloudPage = () => {
   };
   
   // Handle word hover/click to show image
-  const handleWordHover = async (word) => {
-    // Only fetch images for meaningful words (not filler words)
-    if (!shouldFetchImageForWord(word)) {
-      setImageUrl(null);
-      return;
-    }
+ const handleWordHover = async (word) => {
+  if (!word) {
+    setImageUrl(null);
+    return;
+  }
 
-    const imageUrl = await fetchImage(word);
-    if (imageUrl) {
-      setImageUrl(imageUrl);
-    } else {
-      setImageUrl(null);
-    }
-  };
+  const normalizedWord = word.toLowerCase().replace(/[^a-z]/g, "");
+
+  if (!NOUNS.has(normalizedWord)) {
+    setImageUrl(null);
+    return;
+  }
+
+  const customImage = getCustomImage(normalizedWord);
+  if (customImage) {
+    setImageUrl(customImage);
+    return;
+  }
+
+  const imageUrl = await fetchImage(normalizedWord);
+  setImageUrl(imageUrl || null);
+};
+
+
   
   // Update speech settings in real-time when changed during playback
   useEffect(() => {
@@ -617,7 +643,6 @@ const ReadAloudPage = () => {
             setCurrentWord(currentWordObj.index);
             
             // Fetch image for current word
-            handleWordHover(currentWordObj.word);
           }
         }
       };
@@ -690,7 +715,6 @@ const ReadAloudPage = () => {
           setCurrentWord(currentWordObj.index);
           
           // Fetch image for current word
-          handleWordHover(currentWordObj.word);
         }
       }
     };
@@ -1015,13 +1039,17 @@ const ReadAloudPage = () => {
                     const isHighlighted = wordObj && wordObj.index === currentWord;
                     
                     return (
-                      <Word 
+                      <Word
                         key={`word-${index}`}
                         className={isHighlighted ? 'highlighted' : ''}
-                        onClick={() => handleWordHover(token.value)}
+                        onClick={() => {
+                          speakWord(token.value);      // 🔊 pronounce the word
+                          handleWordHover(token.value); // 🖼️ show image (noun-only)
+                        }}
                       >
                         {token.value}
                       </Word>
+
                     );
                   } else {
                     return token.value;

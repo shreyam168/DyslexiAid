@@ -1,9 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
+const multer = require('multer');
+const Tesseract = require('tesseract.js');
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + file.originalname);
+  }
+});
+const upload = multer({ storage });
 
 // Initialize Google Generative AI with API key
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Read Aloud API
 router.post('/read-aloud', (req, res) => {
@@ -21,44 +31,52 @@ router.post('/read-aloud', (req, res) => {
 });
 
 // Educational Chatbot API (Gemini API integration)
+// Educational Chatbot API (Groq integration)
 router.post('/generate', async (req, res) => {
   try {
     const { query } = req.body;
-    
-    if (!GEMINI_API_KEY) {
-      return res.status(500).json({ 
-        success: false, 
-        message: 'GEMINI_API_KEY is not configured on the server' 
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        message: 'GROQ_API_KEY is not configured on the server'
       });
     }
 
-    // Initialize the Gemini API
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const groq = new Groq({ apiKey: GROQ_API_KEY });
 
-    // Create the prompt
-    const prompt = `${query}\n
-      You're an educational assistant for a child with dyslexia.
-      Use simple language, no images, 120-word limit.
-      Focus on clarity, repetition, chunking, and encouragement.
-      Do not give words enclosed in asterisk.
-      Make it as simple as possible, as if you're explaining to a kid who has just started learning that concept.
-      Don't give people as examples.`;
-
-    // Generate content
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
-
-    res.json({ 
-      success: true, 
-      text: text
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `
+            You're an educational assistant for a child with dyslexia.
+            Use simple language, no images, 120-word limit.
+            Focus on clarity, repetition, chunking, and encouragement.
+            Do not give words enclosed in asterisk.
+            Make it as simple as possible, as if you're explaining to a kid who has just started learning that concept.
+            Don't give people as examples.
+            `
+        },
+        {
+          role: 'user',
+          content: query
+        }
+      ],
+      temperature: 0.4
     });
+
+    const text = completion.choices[0].message.content;
+
+    res.json({ success: true, text });
+
   } catch (error) {
-    console.error('Error generating content:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message || 'Failed to generate content' 
+    console.error('Groq error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Groq request failed'
     });
   }
 });
@@ -78,53 +96,119 @@ router.post('/emotional-chat', (req, res) => {
 });
 
 // Therapy Chatbot API
-router.post('/therapy-session', (req, res) => {
+router.post('/therapy-session', async (req, res) => {
   try {
     const { sessionId, message } = req.body;
-    // In a real app, this would connect to an AI service
-    res.json({ 
-      success: true, 
-      sessionId: sessionId || 'new-session-123',
-      response: "That's great progress! Let's continue with our session. How did that last exercise make you feel?"
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message is required'
+      });
+    }
+
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+
+    if (!GROQ_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        message: 'GROQ_API_KEY is not configured on the server'
+      });
+    }
+
+    const groq = new Groq({
+      apiKey: GROQ_API_KEY
     });
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `
+            You are "Best Buddy", a kind and gentle therapy friend for students.
+
+            Your job is to listen and support, not to judge or teach.
+
+            Rules:
+            - Use very simple words
+            - Use short, calm sentences
+            - Sound warm, caring, and friendly
+            - Do not judge or blame
+            - Do not rush the user
+            - Do not give too much advice
+            - Ask only one gentle follow-up question
+            - Make the user feel safe and understood
+            - Encourage sharing feelings in a soft way
+
+            Speak like a caring friend who is sitting next to the student.
+
+            Keep your response under 150 words.
+
+            `
+        },
+        {
+          role: 'user',
+          content: message
+        }
+      ],
+      temperature: 0.6
+    });
+
+    res.json({
+      success: true,
+      sessionId: sessionId || 'new-session-123',
+      response: completion.choices[0].message.content
+    });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Therapy-session error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate therapy response'
+    });
   }
 });
 
+
 // Writing Assistant API
-router.post('/analyze-text', (req, res) => {
+router.post('/decode-handwriting', upload.single('image'), async (req, res) => {
   try {
-    const { text, analysisType } = req.body;
-    
-    let result;
-    // In a real app, this would connect to different NLP services based on analysis type
-    switch(analysisType) {
-      case 'simplify':
-        result = "This is a simplified version of your text. It uses shorter sentences and simpler words.";
-        break;
-      case 'grammar':
-        result = "Grammar check complete. 2 suggestions found.";
-        break;
-      case 'spelling':
-        result = "Spelling check complete. 3 possible errors found.";
-        break;
-      case 'summarize':
-        result = "Summary: This is a concise summary of the main points in your text.";
-        break;
-      default:
-        result = "Please select a valid analysis type.";
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image uploaded'
+      });
     }
-    
-    res.json({ 
-      success: true, 
-      result,
-      originalTextLength: text ? text.length : 0
+
+    console.log('OCR IMAGE PATH 👉', req.file.path);
+
+    const {
+      data: { text }
+    } = await Tesseract.recognize(
+      req.file.path,
+      'eng',
+      {
+        logger: m => console.log(m.status)
+      }
+    );
+
+    console.log('OCR TEXT 👉', text);
+
+    res.json({
+      success: true,
+      text: text.trim()
     });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('OCR ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to extract text'
+    });
   }
 });
+
 
 // Get user sessions
 router.get('/user-sessions', (req, res) => {

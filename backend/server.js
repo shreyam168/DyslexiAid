@@ -4,7 +4,8 @@ const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
 
 // Load env variables
-dotenv.config();
+dotenv.config({ path: __dirname + '/.env' });
+console.log('ENV CHECK → GEMINI_API_KEY:', process.env.GEMINI_API_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,8 +27,8 @@ app.use(cors({
 }));
 
 // Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
 // Routes
 app.use('/api', apiRoutes);

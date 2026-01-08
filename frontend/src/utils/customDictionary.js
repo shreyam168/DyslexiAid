@@ -1,6 +1,22 @@
 // Custom Dictionary Utility
 // Manages word-to-image mappings in localStorage
 
+// Predefined word-image mappings (code-based)
+const PREDEFINED_IMAGES = {
+  birds: "/images/bird.png",
+  bird: "/images/bird.png",
+  friends: "/images/friends.png",
+  friend: "/images/friends.png",
+  animals: "/images/animals.png",
+  deer: "/images/deer.png",
+  elephant: "/images/elephant.png",
+  giraffe: "/images/giraffe.png",
+  grass: "/images/grass.png",
+  leaves: "/images/leaves.png",
+  rain: "/images/rain.png"
+};
+
+
 const DICTIONARY_KEY = 'dyslexiaid_custom_dictionary';
 
 // Initialize dictionary structure if it doesn't exist
@@ -19,15 +35,25 @@ const initializeDictionary = () => {
 // Get custom image for a word (returns base64 string or null)
 export const getCustomImage = (word) => {
   try {
+    if (!word) return null;
+
+    const normalizedWord = word.toLowerCase().trim();
+
+    // 1️⃣ Check predefined code-based images
+    if (PREDEFINED_IMAGES[normalizedWord]) {
+      return PREDEFINED_IMAGES[normalizedWord];
+    }
+
+    // 2️⃣ Fallback to localStorage dictionary
     initializeDictionary();
     const dictionary = JSON.parse(localStorage.getItem(DICTIONARY_KEY) || '{"words":{}}');
-    const normalizedWord = word.toLowerCase().trim();
     return dictionary.words[normalizedWord]?.imageData || null;
   } catch (error) {
     console.error('Error reading custom dictionary:', error);
     return null;
   }
 };
+
 
 // Save a custom word with its image (imageData can be null for placeholder)
 export const saveCustomWord = (word, imageData = null) => {

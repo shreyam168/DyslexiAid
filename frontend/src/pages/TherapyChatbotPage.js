@@ -826,10 +826,10 @@ const TherapyChatbotPage = () => {
     if (!userQuery || userQuery.trim() === "") return;
 
     try {
-      const result = await axios.post('/api/therapy', { query: userQuery });
+      const result = await axios.post('/api/therapy-session', { message: userQuery });
 
       return {
-        text: result.data.text,
+        text: result.data.response,
         images: []
       };
     } catch (err) {
